@@ -8,6 +8,7 @@ import scala.reflect.ClassTag
 import io.getquill.quat._
 import io.getquill.Query
 import io.getquill.util.Messages
+import io.getquill.parser.Lifter
 
 case class Quoted[+T](val ast: io.getquill.ast.Ast)
 
@@ -15,9 +16,11 @@ trait Udt
 
 trait Value[T]
 
+// TODO Quat lifting so can return them from this function
+
 object QuatMaking {
-  inline def inferQuat[T](value: T): Unit = ${ inferQuatImpl('value) }
-  def inferQuatImpl[T: TType](value: Expr[T])(using quotes: Quotes): Expr[Unit] = {
+  inline def inferQuat[T](value: T): Quat = ${ inferQuatImpl('value) }
+  def inferQuatImpl[T: TType](value: Expr[T])(using quotes: Quotes): Expr[Quat] = {
     class Ops extends QuatMakingBase {
       import qctx.reflect._
       override def existsEncoderFor(tpe: TypeRepr): Boolean =
@@ -30,7 +33,24 @@ object QuatMaking {
     }
     val quat = new Ops().inferQuatFromExpr(value)
     println(io.getquill.util.Messages.qprint(quat))
-    '{ () }
+    Lifter.quat(quat)
+  }
+
+  inline def of[T]: Quat = ${ ofType[T] }
+  def ofType[T: TType](using quotes: Quotes): Expr[Quat] = {
+    class Ops extends QuatMakingBase {
+      import qctx.reflect._
+      override def existsEncoderFor(tpe: TypeRepr): Boolean =
+        tpe.asType match
+          case '[t] => Expr.summon[Value[t]] match
+            case Some(_) => true
+            case None => false
+          case _ =>
+            quotes.reflect.report.throwError(s"No type for: ${tpe}")
+    }
+    val quat = new Ops().inferQuatFromType[T]
+    println(io.getquill.util.Messages.qprint(quat))
+    Lifter.quat(quat)
   }
 }
 
@@ -40,6 +60,7 @@ trait QuatMakingBase(using val qctx: Quotes) {
   // TODO Either can summon an Encoder[T] or quill 'Value[T]' so that we know it's a quat value and not a case class
   def existsEncoderFor(tpe: TypeRepr): Boolean
 
+  def inferQuatFromType[T](using TType[T]) = inferQuat(TypeRepr.of[T])
   def inferQuatFromExpr(expr: Expr[Any]) = inferQuat(expr.asTerm.tpe)
 
   def inferQuat(tpe: TypeRepr): Quat = {
@@ -189,8 +210,7 @@ trait QuatMakingBase(using val qctx: Quotes) {
         // TODO any way in dotty to find out if a class is final?
         case Param(Signature(RealTypeBounds(lower, Deoption(upper)))) if (/*!upper.typeSymbol.isFinal &&*/ !existsEncoderFor(tpe)) =>
           parseType(upper, true) match {
-            // TODO Put back after 3.6.0 release that actually has Quat.Product.Type.Abstract
-            //case p: Quat.Product => p.copy(tpe = Quat.Product.Type.Abstract)
+            case p: Quat.Product => p.copy(tpe = Quat.Product.Type.Abstract)
             case other           => other
           }
 
