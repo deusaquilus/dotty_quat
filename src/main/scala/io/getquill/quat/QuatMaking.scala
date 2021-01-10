@@ -36,7 +36,6 @@ object QuatMaking {
     Lifter.quat(quat)
   }
 
-  inline def of[T]: Quat = ${ ofType[T] }
   def ofType[T: TType](using quotes: Quotes): Expr[Quat] = {
     class Ops extends QuatMakingBase {
       import qctx.reflect._
@@ -53,6 +52,8 @@ object QuatMaking {
     Lifter.quat(quat)
   }
 }
+
+inline def quatOf[T]: Quat = ${ QuatMaking.ofType[T] }
 
 trait QuatMakingBase(using val qctx: Quotes) {
   import qctx.reflect._

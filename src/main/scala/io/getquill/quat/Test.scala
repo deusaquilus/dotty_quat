@@ -7,7 +7,7 @@ object Test {
     //QuatMaking.inferQuat(v) //hellooo
 
     
-    QuatMaking.of[Person]
+    quatOf[Person]
 
   }
 }
